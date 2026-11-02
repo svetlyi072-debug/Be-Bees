@@ -1,0 +1,38 @@
+{
+  "rules": {
+    "games": {
+      "$code": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['board', 'turn', 'status', 'move_count'])",
+        "board": { ".validate": "newData.isString()" },
+        "turn": { ".validate": "newData.val() == 'w' || newData.val() == 'b'" },
+        "status": { ".validate": "newData.val() == 'waiting' || newData.val() == 'active'" },
+        "move_count": { ".validate": "newData.isNumber()" },
+        "is_public": { ".validate": "newData.isBoolean()" }
+      }
+    },
+    "public_rooms": {
+      "$code": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "users": {
+      "$id": {
+        "profile": {
+          ".read": true,
+          ".write": true
+        },
+        "stats": {
+          ".read": true,
+          ".write": true,
+          "games_played": { ".validate": "newData.isNumber()" },
+          "white_wins": { ".validate": "newData.isNumber()" },
+          "black_wins": { ".validate": "newData.isNumber()" },
+          "draws": { ".validate": "newData.isNumber()" }
+        }
+      }
+    }
+  }
+}

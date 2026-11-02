@@ -564,10 +564,14 @@ func _show_online_dialog() -> void:
 	join_code_edit.text = ""
 	online_dialog.popup_centered_ratio(0.65)
 
-func _setup_online_match() -> void:
+func _leave_online_match() -> void:
 	if online_match != null:
 		online_match.leave()
 		online_match.queue_free()
+		online_match = null
+
+func _setup_online_match() -> void:
+	_leave_online_match()
 	online_match = OnlineMatch.new()
 	add_child(online_match)
 	online_match.opponent_joined.connect(_on_online_opponent_joined)
@@ -607,8 +611,7 @@ func _on_find_public_pressed() -> void:
 func _on_public_room_found(code: String) -> void:
 	if code == "":
 		online_status_label.text = tr("ONLINE_NO_PUBLIC")
-		online_match.leave()
-		online_match = null
+		_leave_online_match()
 		return
 	online_status_label.text = tr("ONLINE_CONNECTING")
 	online_create_group.visible = false
@@ -616,17 +619,16 @@ func _on_public_room_found(code: String) -> void:
 	online_match.join_room(code)
 
 func _on_online_cancel_pressed() -> void:
-	if online_match != null:
-		online_match.leave()
-		online_match = null
+	_leave_online_match()
 	online_dialog.hide()
 
 func _on_online_join_failed(reason_key: String) -> void:
 	online_status_label.text = tr(reason_key)
+	online_code_label.visible = false
 	online_create_group.visible = true
 	online_join_row.visible = true
 	OnlineMatch.clear_saved_session()
-	online_match = null
+	_leave_online_match()
 
 func _on_online_opponent_joined(state: Dictionary) -> void:
 	online_dialog.hide()
@@ -686,16 +688,30 @@ func _on_resume_declined() -> void:
 
 func _on_online_state_updated(state: Dictionary) -> void:
 	logic.load_from_dict(state)
-	var lm = state.get("last_move", null)
-	if lm is Dictionary:
-		board_view.last_move = [
-			Vector2i(int(lm.from.x), int(lm.from.y)),
-			Vector2i(int(lm.to.x), int(lm.to.y)),
-		]
-	else:
-		board_view.last_move = []
+	board_view.last_move = _parse_last_move(state.get("last_move", null))
 	_deselect()
 	_refresh_status()
+
+func _safe_int(value: Variant, default: int) -> int:
+	# int() raises a runtime error on anything that isn't already a number
+	# (confirmed: int(null) crashes, not just a type-check failure) — this
+	# data comes from a Firebase room anyone can write to, so never pass
+	# an unchecked Variant to int() for it.
+	return int(value) if value is int or value is float else default
+
+func _parse_last_move(lm: Variant) -> Array:
+	# Also network data from a room anyone can write to — don't assume
+	# "from"/"to" are present or shaped right.
+	if not (lm is Dictionary):
+		return []
+	var from_v = lm.get("from", null)
+	var to_v = lm.get("to", null)
+	if not (from_v is Dictionary) or not (to_v is Dictionary):
+		return []
+	return [
+		Vector2i(_safe_int(from_v.get("x", -1), -1), _safe_int(from_v.get("y", -1), -1)),
+		Vector2i(_safe_int(to_v.get("x", -1), -1), _safe_int(to_v.get("y", -1), -1)),
+	]
 
 func _build_register_screen() -> void:
 	register_screen = Control.new()
@@ -847,9 +863,7 @@ func _reset_board_state() -> void:
 	_refresh_status()
 
 func _start_local_game() -> void:
-	if online_match != null:
-		online_match.leave()
-		online_match = null
+	_leave_online_match()
 	my_color = "w"
 	_reset_board_state()
 	_show_game()
@@ -998,8 +1012,6 @@ func _on_new_game_pressed() -> void:
 
 func _do_new_game_pressed() -> void:
 	game_over_dialog.hide()
-	if online_match != null:
-		online_match.leave()
-		online_match = null
+	_leave_online_match()
 	my_color = "w"
 	_reset_board_state()

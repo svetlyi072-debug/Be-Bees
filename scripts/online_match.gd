@@ -59,6 +59,12 @@ static func sanitize_room_code(raw: String) -> String:
 			cleaned += c
 	return cleaned
 
+static func safe_int(value: Variant, default: int) -> int:
+	# int() raises a runtime error on anything that isn't already a
+	# number — this value comes from a Firebase room anyone can write
+	# to, so never hand it an unchecked Variant.
+	return int(value) if value is int or value is float else default
+
 func create_room(logic_state: Dictionary, code: String, make_public: bool) -> void:
 	var clean_code := sanitize_room_code(code)
 	if clean_code == "":
@@ -119,7 +125,8 @@ func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 	room_code = clean_code
 	is_host = false
 	my_color = "b"
-	is_public = data.get("is_public", false)
+	var is_public_value = data.get("is_public", false)
+	is_public = is_public_value if is_public_value is bool else false
 	data["status"] = "active"
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_join_room_put_done)
 
@@ -127,7 +134,7 @@ func _on_join_room_put_done(ok: bool, data: Variant) -> void:
 	if not ok:
 		join_failed.emit("ONLINE_CONNECT_FAILED")
 		return
-	_last_move_count = int(data.get("move_count", 0))
+	_last_move_count = safe_int(data.get("move_count", 0), 0)
 	active = true
 	_poll_timer.start()
 	_save_session()
@@ -145,8 +152,9 @@ func _on_resume_fetched(ok: bool, data: Variant) -> void:
 	if not ok or not (data is Dictionary):
 		join_failed.emit("ONLINE_ROOM_GONE")
 		return
-	is_public = data.get("is_public", false)
-	_last_move_count = int(data.get("move_count", 0))
+	var is_public_value = data.get("is_public", false)
+	is_public = is_public_value if is_public_value is bool else false
+	_last_move_count = safe_int(data.get("move_count", 0), 0)
 	active = true
 	_poll_timer.start()
 	if data.get("status", "") == "waiting":
@@ -220,7 +228,7 @@ func _on_poll_fetched(ok: bool, data: Variant) -> void:
 	if _waiting_for_opponent and data.get("status", "") == "active":
 		_waiting_for_opponent = false
 		opponent_joined.emit(data)
-	var move_count: int = int(data.get("move_count", 0))
+	var move_count: int = safe_int(data.get("move_count", 0), 0)
 	if move_count != _last_move_count:
 		_last_move_count = move_count
 		state_updated.emit(data)

@@ -340,7 +340,21 @@ func load_from_dict(data: Dictionary) -> void:
 			else:
 				row[x] = {"type": CODE_PIECES.get(code.substr(1, 1), "pawn"), "color": code.substr(0, 1)}
 		board.append(row)
-	turn = data.get("turn", WHITE)
-	var ep: Dictionary = data.get("en_passant", {})
-	en_passant_target = Vector2i(int(ep.get("x", -1)), int(ep.get("y", -1)))
-	castling_rights = data.get("castling", {"w_king": true, "w_queen": true, "b_king": true, "b_queen": true})
+	# This data came over the network (Firebase) and the room is writable by
+	# anyone who has the URL — validate shapes defensively instead of
+	# trusting them, so a malformed or tampered-with room can't crash
+	# every client that loads it.
+	var turn_value = data.get("turn", WHITE)
+	turn = turn_value if turn_value is String and turn_value in [WHITE, BLACK] else WHITE
+
+	var ep_value = data.get("en_passant", {})
+	var ep: Dictionary = ep_value if ep_value is Dictionary else {}
+	var ep_x = ep.get("x", -1)
+	var ep_y = ep.get("y", -1)
+	en_passant_target = Vector2i(
+		int(ep_x) if ep_x is int or ep_x is float else -1,
+		int(ep_y) if ep_y is int or ep_y is float else -1
+	)
+
+	var castling_value = data.get("castling", null)
+	castling_rights = castling_value if castling_value is Dictionary else {"w_king": true, "w_queen": true, "b_king": true, "b_queen": true}
