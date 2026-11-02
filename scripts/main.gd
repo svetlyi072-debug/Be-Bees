@@ -34,6 +34,10 @@ var online_code_label: Label
 var online_create_btn: Button
 var online_join_row: Control
 var join_code_edit: LineEdit
+var create_code_edit: LineEdit
+var public_checkbox: CheckBox
+var find_public_btn: Button
+var online_create_group: Control
 
 var online_match: OnlineMatch = null
 var my_color: String = "w"
@@ -44,6 +48,10 @@ var register_name_edit: LineEdit
 var resume_dialog: PopupPanel
 var resume_label: Label
 var _pending_resume_session: Dictionary = {}
+
+var confirm_dialog: PopupPanel
+var confirm_label: Label
+var _confirm_action: Callable = Callable()
 
 const DIALOG_CONTENT_WIDTH := 560.0
 const DIALOG_TITLE_FONT := 34
@@ -78,6 +86,7 @@ func _ready() -> void:
 	_build_game_screen()
 	_build_register_screen()
 	_build_resume_dialog()
+	_build_confirm_dialog()
 
 	_show_menu()
 	register_screen.visible = UserProfile.is_new_profile
@@ -411,7 +420,10 @@ func _build_mode_dialog() -> void:
 	var local_btn := _make_text_button("Играть локально", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	local_btn.pressed.connect(func():
 		mode_dialog.hide()
-		_start_local_game()
+		if _has_unfinished_online_match():
+			_confirm("Текущая онлайн-партия еще не завершена. Начать новую локальную игру?", _start_local_game)
+		else:
+			_start_local_game()
 	)
 	vbox.add_child(local_btn)
 
@@ -459,24 +471,56 @@ func _build_online_dialog() -> void:
 	online_code_label.visible = false
 	vbox.add_child(online_code_label)
 
+	online_create_group = VBoxContainer.new()
+	online_create_group.add_theme_constant_override("separation", 14)
+	vbox.add_child(online_create_group)
+
+	var create_row := HBoxContainer.new()
+	create_row.add_theme_constant_override("separation", 16)
+	online_create_group.add_child(create_row)
+
+	create_code_edit = LineEdit.new()
+	create_code_edit.placeholder_text = "Свой код"
+	create_code_edit.max_length = 12
+	create_code_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 216, 56)
+	create_code_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	create_row.add_child(create_code_edit)
+
+	var random_btn := _make_text_button("Случайный", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	random_btn.pressed.connect(func(): create_code_edit.text = OnlineMatch.generate_room_code())
+	create_row.add_child(random_btn)
+
+	public_checkbox = CheckBox.new()
+	public_checkbox.text = "Публичная комната (видна всем)"
+	public_checkbox.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	online_create_group.add_child(public_checkbox)
+
 	online_create_btn = _make_text_button("Создать комнату", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	online_create_btn.pressed.connect(_on_create_room_pressed)
-	vbox.add_child(online_create_btn)
+	online_create_group.add_child(online_create_btn)
 
-	online_join_row = HBoxContainer.new()
-	online_join_row.add_theme_constant_override("separation", 16)
+	online_join_row = VBoxContainer.new()
+	online_join_row.add_theme_constant_override("separation", 14)
 	vbox.add_child(online_join_row)
+
+	var join_row := HBoxContainer.new()
+	join_row.add_theme_constant_override("separation", 16)
+	online_join_row.add_child(join_row)
 
 	join_code_edit = LineEdit.new()
 	join_code_edit.placeholder_text = "Код комнаты"
-	join_code_edit.max_length = 5
+	join_code_edit.max_length = 12
 	join_code_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 216, 56)
 	join_code_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
-	online_join_row.add_child(join_code_edit)
+	join_row.add_child(join_code_edit)
 
 	var join_btn := _make_text_button("Войти", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	join_btn.pressed.connect(_on_join_room_pressed)
-	online_join_row.add_child(join_btn)
+	join_row.add_child(join_btn)
+
+	find_public_btn = _make_text_button("Случайная игра", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	find_public_btn.pressed.connect(_on_find_public_pressed)
+	online_join_row.add_child(find_public_btn)
 
 	var cancel_btn := _make_text_button("Отмена", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	cancel_btn.pressed.connect(_on_online_cancel_pressed)
@@ -487,10 +531,12 @@ func _build_online_dialog() -> void:
 func _show_online_dialog() -> void:
 	online_status_label.text = "Создайте комнату или введите код, чтобы присоединиться."
 	online_code_label.visible = false
-	online_create_btn.disabled = false
+	online_create_group.visible = true
 	online_join_row.visible = true
+	create_code_edit.text = OnlineMatch.generate_room_code()
+	public_checkbox.button_pressed = false
 	join_code_edit.text = ""
-	online_dialog.popup_centered_ratio(0.55)
+	online_dialog.popup_centered_ratio(0.65)
 
 func _setup_online_match() -> void:
 	if online_match != null:
@@ -503,12 +549,16 @@ func _setup_online_match() -> void:
 	online_match.join_failed.connect(_on_online_join_failed)
 
 func _on_create_room_pressed() -> void:
+	var code := create_code_edit.text.strip_edges()
+	if code == "":
+		online_status_label.text = "Введите код комнаты или нажмите «Случайный»."
+		return
 	online_status_label.text = "Создаём комнату..."
-	online_create_btn.disabled = true
+	online_create_group.visible = false
 	online_join_row.visible = false
 	logic.reset_board()
 	_setup_online_match()
-	online_match.create_room(logic.to_dict())
+	online_match.create_room(logic.to_dict(), code, public_checkbox.button_pressed)
 	online_code_label.text = "Код комнаты: " + online_match.room_code
 	online_code_label.visible = true
 	online_status_label.text = "Ожидание соперника..."
@@ -518,9 +568,25 @@ func _on_join_room_pressed() -> void:
 	if code == "":
 		return
 	online_status_label.text = "Подключение..."
-	online_create_btn.disabled = true
+	online_create_group.visible = false
 	online_join_row.visible = false
 	_setup_online_match()
+	online_match.join_room(code)
+
+func _on_find_public_pressed() -> void:
+	online_status_label.text = "Ищем публичную игру..."
+	_setup_online_match()
+	online_match.find_public_room(_on_public_room_found)
+
+func _on_public_room_found(code: String) -> void:
+	if code == "":
+		online_status_label.text = "Нет доступных публичных комнат. Попробуйте позже."
+		online_match.leave()
+		online_match = null
+		return
+	online_status_label.text = "Подключение..."
+	online_create_group.visible = false
+	online_join_row.visible = false
 	online_match.join_room(code)
 
 func _on_online_cancel_pressed() -> void:
@@ -531,7 +597,7 @@ func _on_online_cancel_pressed() -> void:
 
 func _on_online_join_failed(reason: String) -> void:
 	online_status_label.text = reason
-	online_create_btn.disabled = false
+	online_create_group.visible = true
 	online_join_row.visible = true
 	OnlineMatch.clear_saved_session()
 	online_match = null
@@ -583,9 +649,9 @@ func _on_resume_confirmed() -> void:
 	online_status_label.text = "Переподключение к комнате %s..." % code
 	online_code_label.text = "Код комнаты: " + code
 	online_code_label.visible = true
-	online_create_btn.disabled = true
+	online_create_group.visible = false
 	online_join_row.visible = false
-	online_dialog.popup_centered_ratio(0.55)
+	online_dialog.popup_centered_ratio(0.65)
 	online_match.resume_session(code, session.get("my_color", "w"), session.get("is_host", false))
 
 func _on_resume_declined() -> void:
@@ -759,6 +825,41 @@ func _start_local_game() -> void:
 	_reset_board_state()
 	_show_game()
 
+func _has_unfinished_online_match() -> bool:
+	return online_match != null and not game_over
+
+func _build_confirm_dialog() -> void:
+	confirm_dialog = PopupPanel.new()
+	var vbox := VBoxContainer.new()
+	vbox.position = Vector2(20, 20)
+	vbox.add_theme_constant_override("separation", 14)
+	confirm_dialog.add_child(vbox)
+
+	confirm_label = Label.new()
+	confirm_label.custom_minimum_size = Vector2(320, 0)
+	confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	confirm_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(confirm_label)
+
+	var yes_btn := _make_text_button("Да, начать новую", Vector2(320, 0))
+	yes_btn.pressed.connect(func():
+		confirm_dialog.hide()
+		if _confirm_action.is_valid():
+			_confirm_action.call()
+	)
+	vbox.add_child(yes_btn)
+
+	var no_btn := _make_text_button("Отмена", Vector2(320, 0))
+	no_btn.pressed.connect(func(): confirm_dialog.hide())
+	vbox.add_child(no_btn)
+
+	add_child(confirm_dialog)
+
+func _confirm(message: String, action: Callable) -> void:
+	confirm_label.text = message
+	_confirm_action = action
+	confirm_dialog.popup_centered(Vector2i(360, 220))
+
 func _on_continue_pressed() -> void:
 	if _game_started:
 		_show_game()
@@ -861,6 +962,12 @@ func _show_game_over(title_text: String, subtitle: String) -> void:
 	game_over_dialog.popup_centered(Vector2i(280, 190))
 
 func _on_new_game_pressed() -> void:
+	if _has_unfinished_online_match():
+		_confirm("Текущая онлайн-партия еще не завершена. Начать новую локальную игру?", _do_new_game_pressed)
+	else:
+		_do_new_game_pressed()
+
+func _do_new_game_pressed() -> void:
 	game_over_dialog.hide()
 	if online_match != null:
 		online_match.leave()

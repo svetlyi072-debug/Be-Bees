@@ -10,11 +10,14 @@ const POLL_INTERVAL := 1.5
 const ROOM_CODE_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const ROOM_CODE_LENGTH := 5
 const SESSION_PATH := "user://online_session.json"
+const GAMES_PATH := "games"
+const PUBLIC_ROOMS_PATH := "public_rooms"
 
 var room_code: String = ""
 var my_color: String = "w"
 var is_host: bool = false
 var active: bool = false
+var is_public: bool = false
 
 var _last_move_count: int = -1
 var _waiting_for_opponent: bool = false
@@ -42,15 +45,40 @@ func _on_window_focus_gained() -> void:
 		_poll_timer.start()
 		_poll()
 
-func create_room(logic_state: Dictionary) -> void:
-	room_code = _generate_room_code()
+static func generate_room_code() -> String:
+	var code := ""
+	for i in ROOM_CODE_LENGTH:
+		code += ROOM_CODE_CHARS[randi() % ROOM_CODE_CHARS.length()]
+	return code
+
+static func sanitize_room_code(raw: String) -> String:
+	var cleaned := ""
+	for c in raw.strip_edges().to_upper():
+		if c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":
+			cleaned += c
+	return cleaned
+
+func create_room(logic_state: Dictionary, code: String, make_public: bool) -> void:
+	var clean_code := sanitize_room_code(code)
+	if clean_code == "":
+		join_failed.emit("Код комнаты не может быть пустым.")
+		return
+	room_code = clean_code
 	is_host = true
 	my_color = "w"
+	is_public = make_public
+	_send_get("%s/%s" % [GAMES_PATH, room_code], _on_create_room_checked.bind(logic_state))
+
+func _on_create_room_checked(ok: bool, existing: Variant, logic_state: Dictionary) -> void:
+	if ok and existing is Dictionary and existing.get("status", "") in ["waiting", "active"]:
+		join_failed.emit("Этот код уже занят, выберите другой.")
+		return
 	var data := logic_state.duplicate(true)
 	data["status"] = "waiting"
 	data["move_count"] = 0
 	data["last_move"] = null
-	_send_put(data, _on_create_room_done)
+	data["is_public"] = is_public
+	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_create_room_done)
 
 func _on_create_room_done(ok: bool, _data: Variant) -> void:
 	if not ok:
@@ -61,10 +89,24 @@ func _on_create_room_done(ok: bool, _data: Variant) -> void:
 	active = true
 	_poll_timer.start()
 	_save_session()
+	if is_public:
+		_send_put("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], {"created_at": Time.get_unix_time_from_system()}, func(_ok, _d): pass)
+
+func find_public_room(on_found: Callable) -> void:
+	_send_get(PUBLIC_ROOMS_PATH, func(ok: bool, data: Variant):
+		if not ok or not (data is Dictionary) or data.is_empty():
+			on_found.call("")
+			return
+		var codes: Array = data.keys()
+		on_found.call(codes[randi() % codes.size()])
+	)
 
 func join_room(code: String) -> void:
-	var clean_code := code.strip_edges().to_upper()
-	_send_get(clean_code, _on_join_room_fetched.bind(clean_code))
+	var clean_code := sanitize_room_code(code)
+	if clean_code == "":
+		join_failed.emit("Введите код комнаты.")
+		return
+	_send_get("%s/%s" % [GAMES_PATH, clean_code], _on_join_room_fetched.bind(clean_code))
 
 func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 	if not ok or not (data is Dictionary):
@@ -76,8 +118,9 @@ func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 	room_code = clean_code
 	is_host = false
 	my_color = "b"
+	is_public = data.get("is_public", false)
 	data["status"] = "active"
-	_send_put(data, _on_join_room_put_done)
+	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_join_room_put_done)
 
 func _on_join_room_put_done(ok: bool, data: Variant) -> void:
 	if not ok:
@@ -87,18 +130,21 @@ func _on_join_room_put_done(ok: bool, data: Variant) -> void:
 	active = true
 	_poll_timer.start()
 	_save_session()
+	if is_public:
+		_send_delete("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], func(_ok): pass)
 	opponent_joined.emit(data)
 
 func resume_session(saved_room_code: String, saved_my_color: String, saved_is_host: bool) -> void:
 	room_code = saved_room_code
 	my_color = saved_my_color
 	is_host = saved_is_host
-	_send_get(room_code, _on_resume_fetched)
+	_send_get("%s/%s" % [GAMES_PATH, room_code], _on_resume_fetched)
 
 func _on_resume_fetched(ok: bool, data: Variant) -> void:
 	if not ok or not (data is Dictionary):
 		join_failed.emit("Комната больше не существует.")
 		return
+	is_public = data.get("is_public", false)
 	_last_move_count = int(data.get("move_count", 0))
 	active = true
 	_poll_timer.start()
@@ -113,13 +159,16 @@ func submit_move(logic_state: Dictionary, last_move: Array) -> void:
 	data["status"] = "active"
 	data["move_count"] = _last_move_count + 1
 	data["last_move"] = _encode_move(last_move)
-	_send_put(data, _on_submit_move_done)
+	data["is_public"] = is_public
+	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_submit_move_done)
 
 func _on_submit_move_done(ok: bool, data: Variant) -> void:
 	if ok:
 		_last_move_count = data["move_count"]
 
 func leave() -> void:
+	if active and is_host and _waiting_for_opponent and is_public:
+		_send_delete("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], func(_ok): pass)
 	active = false
 	_poll_timer.stop()
 	clear_saved_session()
@@ -157,16 +206,10 @@ func _encode_move(last_move: Array) -> Variant:
 	var to: Vector2i = last_move[1]
 	return {"from": {"x": from.x, "y": from.y}, "to": {"x": to.x, "y": to.y}}
 
-func _generate_room_code() -> String:
-	var code := ""
-	for i in ROOM_CODE_LENGTH:
-		code += ROOM_CODE_CHARS[randi() % ROOM_CODE_CHARS.length()]
-	return code
-
 func _poll() -> void:
 	if not active:
 		return
-	_send_get(room_code, _on_poll_fetched)
+	_send_get("%s/%s" % [GAMES_PATH, room_code], _on_poll_fetched)
 
 func _on_poll_fetched(ok: bool, data: Variant) -> void:
 	if not ok or not (data is Dictionary):
@@ -186,14 +229,14 @@ func _on_poll_fetched(ok: bool, data: Variant) -> void:
 # actively cancelling any in-flight request on focus loss. Rewritten to
 # avoid coroutine suspension across a network callback entirely.)
 
-func _send_get(code: String, on_done: Callable) -> void:
+func _send_get(path: String, on_done: Callable) -> void:
 	if not _window_focused:
 		on_done.call(false, null)
 		return
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.request_completed.connect(_on_get_done.bind(http, on_done))
-	var err := http.request("%s/games/%s.json" % [FIREBASE_URL, code])
+	var err := http.request("%s/%s.json" % [FIREBASE_URL, path])
 	if err != OK:
 		http.queue_free()
 		on_done.call(false, null)
@@ -205,7 +248,7 @@ func _on_get_done(_result: int, response_code: int, _headers: PackedStringArray,
 		return
 	on_done.call(true, JSON.parse_string(body.get_string_from_utf8()))
 
-func _send_put(data: Dictionary, on_done: Callable) -> void:
+func _send_put(path: String, data: Dictionary, on_done: Callable) -> void:
 	if not _window_focused:
 		on_done.call(false, data)
 		return
@@ -213,7 +256,7 @@ func _send_put(data: Dictionary, on_done: Callable) -> void:
 	add_child(http)
 	http.request_completed.connect(_on_put_done.bind(http, on_done, data))
 	var body_str := JSON.stringify(data)
-	var err := http.request("%s/games/%s.json" % [FIREBASE_URL, room_code], ["Content-Type: application/json"], HTTPClient.METHOD_PUT, body_str)
+	var err := http.request("%s/%s.json" % [FIREBASE_URL, path], ["Content-Type: application/json"], HTTPClient.METHOD_PUT, body_str)
 	if err != OK:
 		http.queue_free()
 		on_done.call(false, data)
@@ -221,3 +264,19 @@ func _send_put(data: Dictionary, on_done: Callable) -> void:
 func _on_put_done(_result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray, http: HTTPRequest, on_done: Callable, data: Dictionary) -> void:
 	http.queue_free()
 	on_done.call(response_code == 200, data)
+
+func _send_delete(path: String, on_done: Callable) -> void:
+	if not _window_focused:
+		on_done.call(false)
+		return
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(_on_delete_done.bind(http, on_done))
+	var err := http.request("%s/%s.json" % [FIREBASE_URL, path], [], HTTPClient.METHOD_DELETE)
+	if err != OK:
+		http.queue_free()
+		on_done.call(false)
+
+func _on_delete_done(_result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray, http: HTTPRequest, on_done: Callable) -> void:
+	http.queue_free()
+	on_done.call(response_code == 200)
