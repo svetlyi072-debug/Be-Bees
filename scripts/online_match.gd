@@ -6,7 +6,7 @@ signal state_updated(state: Dictionary)
 signal join_failed(reason: String)
 
 const FIREBASE_URL := "https://sshhoo-67dd8-default-rtdb.europe-west1.firebasedatabase.app"
-const POLL_INTERVAL := 1.5
+const POLL_INTERVAL := 0.4
 const ROOM_CODE_CHARS := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const ROOM_CODE_LENGTH := 5
 const SESSION_PATH := "user://online_session.json"
@@ -23,6 +23,7 @@ var _last_move_count: int = -1
 var _waiting_for_opponent: bool = false
 var _poll_timer: Timer
 var _window_focused: bool = true
+var _poll_in_flight: bool = false
 
 func _ready() -> void:
 	_poll_timer = Timer.new()
@@ -207,11 +208,13 @@ func _encode_move(last_move: Array) -> Variant:
 	return {"from": {"x": from.x, "y": from.y}, "to": {"x": to.x, "y": to.y}}
 
 func _poll() -> void:
-	if not active:
+	if not active or _poll_in_flight:
 		return
+	_poll_in_flight = true
 	_send_get("%s/%s" % [GAMES_PATH, room_code], _on_poll_fetched)
 
 func _on_poll_fetched(ok: bool, data: Variant) -> void:
+	_poll_in_flight = false
 	if not ok or not (data is Dictionary):
 		return
 	if _waiting_for_opponent and data.get("status", "") == "active":
