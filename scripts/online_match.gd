@@ -62,7 +62,7 @@ static func sanitize_room_code(raw: String) -> String:
 func create_room(logic_state: Dictionary, code: String, make_public: bool) -> void:
 	var clean_code := sanitize_room_code(code)
 	if clean_code == "":
-		join_failed.emit("Код комнаты не может быть пустым.")
+		join_failed.emit("ONLINE_CODE_EMPTY_ERR")
 		return
 	room_code = clean_code
 	is_host = true
@@ -72,7 +72,7 @@ func create_room(logic_state: Dictionary, code: String, make_public: bool) -> vo
 
 func _on_create_room_checked(ok: bool, existing: Variant, logic_state: Dictionary) -> void:
 	if ok and existing is Dictionary and existing.get("status", "") in ["waiting", "active"]:
-		join_failed.emit("Этот код уже занят, выберите другой.")
+		join_failed.emit("ONLINE_CODE_TAKEN")
 		return
 	var data := logic_state.duplicate(true)
 	data["status"] = "waiting"
@@ -83,7 +83,7 @@ func _on_create_room_checked(ok: bool, existing: Variant, logic_state: Dictionar
 
 func _on_create_room_done(ok: bool, _data: Variant) -> void:
 	if not ok:
-		join_failed.emit("Не удалось создать комнату. Проверьте связь.")
+		join_failed.emit("ONLINE_CREATE_FAILED")
 		return
 	_last_move_count = 0
 	_waiting_for_opponent = true
@@ -105,16 +105,16 @@ func find_public_room(on_found: Callable) -> void:
 func join_room(code: String) -> void:
 	var clean_code := sanitize_room_code(code)
 	if clean_code == "":
-		join_failed.emit("Введите код комнаты.")
+		join_failed.emit("ONLINE_ENTER_CODE")
 		return
 	_send_get("%s/%s" % [GAMES_PATH, clean_code], _on_join_room_fetched.bind(clean_code))
 
 func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 	if not ok or not (data is Dictionary):
-		join_failed.emit("Комната не найдена.")
+		join_failed.emit("ONLINE_ROOM_NOT_FOUND")
 		return
 	if data.get("status", "") != "waiting":
-		join_failed.emit("В этой комнате уже играют.")
+		join_failed.emit("ONLINE_ROOM_BUSY")
 		return
 	room_code = clean_code
 	is_host = false
@@ -125,7 +125,7 @@ func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 
 func _on_join_room_put_done(ok: bool, data: Variant) -> void:
 	if not ok:
-		join_failed.emit("Не удалось подключиться. Проверьте связь.")
+		join_failed.emit("ONLINE_CONNECT_FAILED")
 		return
 	_last_move_count = int(data.get("move_count", 0))
 	active = true
@@ -143,7 +143,7 @@ func resume_session(saved_room_code: String, saved_my_color: String, saved_is_ho
 
 func _on_resume_fetched(ok: bool, data: Variant) -> void:
 	if not ok or not (data is Dictionary):
-		join_failed.emit("Комната больше не существует.")
+		join_failed.emit("ONLINE_ROOM_GONE")
 		return
 	is_public = data.get("is_public", false)
 	_last_move_count = int(data.get("move_count", 0))

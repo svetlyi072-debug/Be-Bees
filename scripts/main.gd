@@ -25,6 +25,7 @@ var sound_button: TextureButton
 var music_button: TextureButton
 var sound_volume_slider: HSlider
 var music_volume_slider: HSlider
+var language_option: OptionButton
 var nickname_edit: LineEdit
 
 var mode_dialog: PopupPanel
@@ -59,8 +60,8 @@ const DIALOG_TEXT_FONT := 22
 const DIALOG_BUTTON_FONT := 22
 const DIALOG_BUTTON_HEIGHT := 64.0
 
-const NAME_MAP := {"w": "Белые", "b": "Чёрные"}
-const PROMO_LABELS := {"queen": "Королева", "rook": "Ладья", "bishop": "Слон", "knight": "Конь"}
+const COLOR_KEYS := {"w": "COLOR_WHITE", "b": "COLOR_BLACK"}
+const PROMO_KEYS := {"queen": "PROMO_QUEEN", "rook": "PROMO_ROOK", "bishop": "PROMO_BISHOP", "knight": "PROMO_KNIGHT"}
 const PROMO_ORDER := ["queen", "rook", "bishop", "knight"]
 
 var square_size: int = 80
@@ -159,13 +160,13 @@ func _build_menu_screen() -> void:
 	center.add_child(panel)
 
 	var title := Label.new()
-	title.text = "Be_Bees"
+	title.text = "MENU_TITLE"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 40)
 	panel.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Шахматы: Пчёлы против Ос"
+	subtitle.text = "MENU_SUBTITLE"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", 16)
 	panel.add_child(subtitle)
@@ -197,7 +198,7 @@ func _build_menu_screen() -> void:
 	settings_btn.pressed.connect(func(): settings_dialog.popup_centered_ratio(0.8))
 	button_row.add_child(settings_btn)
 
-	leaderboard_dialog = _make_info_dialog("Таблица лидеров", "Пока нет сыгранных партий.\nТаблица появится после первых матчей.")
+	leaderboard_dialog = _make_info_dialog("LEADERBOARD_TITLE", "LEADERBOARD_BODY")
 	add_child(leaderboard_dialog)
 	_build_profile_dialog()
 	_build_settings_dialog()
@@ -229,7 +230,7 @@ func _make_info_dialog(title_text: String, message: String) -> PopupPanel:
 	msg_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	vbox.add_child(msg_label)
 
-	var close_btn := _make_text_button("Закрыть", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var close_btn := _make_text_button("BTN_CLOSE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	close_btn.pressed.connect(func(): dialog.hide())
 	vbox.add_child(close_btn)
 
@@ -246,7 +247,7 @@ func _build_profile_dialog() -> void:
 	center.add_child(vbox)
 
 	var title_label := Label.new()
-	title_label.text = "Профиль"
+	title_label.text = "PROFILE_TITLE"
 	title_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
@@ -272,7 +273,7 @@ func _build_profile_dialog() -> void:
 	profile_stats_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	vbox.add_child(profile_stats_label)
 
-	var close_btn := _make_text_button("Закрыть", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var close_btn := _make_text_button("BTN_CLOSE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	close_btn.pressed.connect(func(): profile_dialog.hide())
 	vbox.add_child(close_btn)
 
@@ -280,14 +281,14 @@ func _build_profile_dialog() -> void:
 	add_child(profile_dialog)
 
 func _refresh_profile_dialog() -> void:
-	profile_name_label.text = "Имя: " + UserProfile.player_name
-	profile_id_label.text = "ID: " + UserProfile.id
+	profile_name_label.text = tr("PROFILE_NAME_PREFIX") + UserProfile.player_name
+	profile_id_label.text = tr("PROFILE_ID_PREFIX") + UserProfile.id
 	if UserProfile.stats_synced:
-		profile_stats_label.text = "Партий сыграно: %d\nПобед белых: %d   Побед чёрных: %d   Ничьих: %d" % [
+		profile_stats_label.text = tr("PROFILE_STATS_FORMAT") % [
 			UserProfile.games_played, UserProfile.white_wins, UserProfile.black_wins, UserProfile.draws
 		]
 	else:
-		profile_stats_label.text = "Нет связи с сервером — статистика недоступна."
+		profile_stats_label.text = tr("PROFILE_NO_CONNECTION")
 
 func _build_settings_dialog() -> void:
 	settings_dialog = PopupPanel.new()
@@ -300,7 +301,7 @@ func _build_settings_dialog() -> void:
 	center.add_child(vbox)
 
 	var title_label := Label.new()
-	title_label.text = "Настройки"
+	title_label.text = "SETTINGS_TITLE"
 	title_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
@@ -310,7 +311,7 @@ func _build_settings_dialog() -> void:
 	sound_row.add_theme_constant_override("separation", 20)
 	vbox.add_child(sound_row)
 	var sound_label := Label.new()
-	sound_label.text = "Звук"
+	sound_label.text = "SETTINGS_SOUND"
 	sound_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 110, 0)
 	sound_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	sound_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
@@ -327,7 +328,7 @@ func _build_settings_dialog() -> void:
 	music_row.add_theme_constant_override("separation", 20)
 	vbox.add_child(music_row)
 	var music_label := Label.new()
-	music_label.text = "Музыка"
+	music_label.text = "SETTINGS_MUSIC"
 	music_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 110, 0)
 	music_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	music_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
@@ -339,6 +340,18 @@ func _build_settings_dialog() -> void:
 	music_volume_slider = _make_volume_slider(GameSettings.music_volume_percent)
 	music_volume_slider.value_changed.connect(func(v): GameSettings.set_music_volume_percent(v))
 	vbox.add_child(music_volume_slider)
+
+	var language_row := HBoxContainer.new()
+	language_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(language_row)
+	var language_label := Label.new()
+	language_label.text = "SETTINGS_LANGUAGE"
+	language_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 220, 0)
+	language_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	language_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	language_row.add_child(language_label)
+	language_option = _make_language_option()
+	language_row.add_child(language_option)
 
 	var nick_row := HBoxContainer.new()
 	nick_row.add_theme_constant_override("separation", 16)
@@ -357,22 +370,35 @@ func _build_settings_dialog() -> void:
 	nickname_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	nick_row.add_child(nickname_edit)
 
-	var save_btn := _make_text_button("Сохранить ник", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var save_btn := _make_text_button("SETTINGS_SAVE_NICK", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	save_btn.pressed.connect(_on_save_nickname_pressed)
 	vbox.add_child(save_btn)
 
-	var close_btn := _make_text_button("Закрыть", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var close_btn := _make_text_button("BTN_CLOSE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	close_btn.pressed.connect(func(): settings_dialog.hide())
 	vbox.add_child(close_btn)
 
 	settings_dialog.about_to_popup.connect(_refresh_settings_dialog)
 	add_child(settings_dialog)
 
+func _make_language_option() -> OptionButton:
+	var option := OptionButton.new()
+	option.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	option.add_item("Русский", 0)
+	option.add_item("English", 1)
+	option.selected = 0 if GameSettings.language == "ru" else 1
+	option.item_selected.connect(func(idx: int):
+		GameSettings.set_language("ru" if idx == 0 else "en")
+		GameSettings.play_click()
+	)
+	return option
+
 func _refresh_settings_dialog() -> void:
 	_update_sound_button_icon()
 	_update_music_button_icon()
 	sound_volume_slider.set_value_no_signal(GameSettings.sound_volume_percent)
 	music_volume_slider.set_value_no_signal(GameSettings.music_volume_percent)
+	language_option.selected = 0 if GameSettings.language == "ru" else 1
 	nickname_edit.text = UserProfile.player_name
 
 func _on_sound_button_pressed() -> void:
@@ -411,30 +437,30 @@ func _build_mode_dialog() -> void:
 	center.add_child(vbox)
 
 	var title_label := Label.new()
-	title_label.text = "Новая игра"
+	title_label.text = "NEW_GAME"
 	title_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
 	vbox.add_child(title_label)
 
-	var local_btn := _make_text_button("Играть локально", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var local_btn := _make_text_button("MODE_LOCAL", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	local_btn.pressed.connect(func():
 		mode_dialog.hide()
 		if _has_unfinished_online_match():
-			_confirm("Текущая онлайн-партия еще не завершена. Начать новую локальную игру?", _start_local_game)
+			_confirm(tr("CONFIRM_ABANDON_ONLINE"), _start_local_game)
 		else:
 			_start_local_game()
 	)
 	vbox.add_child(local_btn)
 
-	var online_btn := _make_text_button("Играть онлайн", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var online_btn := _make_text_button("MODE_ONLINE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	online_btn.pressed.connect(func():
 		mode_dialog.hide()
 		_show_online_dialog()
 	)
 	vbox.add_child(online_btn)
 
-	var close_btn := _make_text_button("Закрыть", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var close_btn := _make_text_button("BTN_CLOSE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	close_btn.pressed.connect(func(): mode_dialog.hide())
 	vbox.add_child(close_btn)
 
@@ -451,7 +477,7 @@ func _build_online_dialog() -> void:
 	center.add_child(vbox)
 
 	var title_label := Label.new()
-	title_label.text = "Онлайн-игра"
+	title_label.text = "ONLINE_TITLE"
 	title_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
@@ -480,22 +506,22 @@ func _build_online_dialog() -> void:
 	online_create_group.add_child(create_row)
 
 	create_code_edit = LineEdit.new()
-	create_code_edit.placeholder_text = "Свой код"
+	create_code_edit.placeholder_text = "ONLINE_CREATE_PLACEHOLDER"
 	create_code_edit.max_length = 12
 	create_code_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 216, 56)
 	create_code_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	create_row.add_child(create_code_edit)
 
-	var random_btn := _make_text_button("Случайный", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var random_btn := _make_text_button("ONLINE_RANDOM", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	random_btn.pressed.connect(func(): create_code_edit.text = OnlineMatch.generate_room_code())
 	create_row.add_child(random_btn)
 
 	public_checkbox = CheckBox.new()
-	public_checkbox.text = "Публичная комната (видна всем)"
+	public_checkbox.text = "ONLINE_PUBLIC_CHECKBOX"
 	public_checkbox.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	online_create_group.add_child(public_checkbox)
 
-	online_create_btn = _make_text_button("Создать комнату", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	online_create_btn = _make_text_button("ONLINE_CREATE_BTN", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	online_create_btn.pressed.connect(_on_create_room_pressed)
 	online_create_group.add_child(online_create_btn)
 
@@ -508,28 +534,28 @@ func _build_online_dialog() -> void:
 	online_join_row.add_child(join_row)
 
 	join_code_edit = LineEdit.new()
-	join_code_edit.placeholder_text = "Код комнаты"
+	join_code_edit.placeholder_text = "ONLINE_JOIN_PLACEHOLDER"
 	join_code_edit.max_length = 12
 	join_code_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH - 216, 56)
 	join_code_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	join_row.add_child(join_code_edit)
 
-	var join_btn := _make_text_button("Войти", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var join_btn := _make_text_button("ONLINE_JOIN_BTN", Vector2(200, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	join_btn.pressed.connect(_on_join_room_pressed)
 	join_row.add_child(join_btn)
 
-	find_public_btn = _make_text_button("Случайная игра", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	find_public_btn = _make_text_button("ONLINE_FIND_PUBLIC", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	find_public_btn.pressed.connect(_on_find_public_pressed)
 	online_join_row.add_child(find_public_btn)
 
-	var cancel_btn := _make_text_button("Отмена", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var cancel_btn := _make_text_button("BTN_CANCEL", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	cancel_btn.pressed.connect(_on_online_cancel_pressed)
 	vbox.add_child(cancel_btn)
 
 	add_child(online_dialog)
 
 func _show_online_dialog() -> void:
-	online_status_label.text = "Создайте комнату или введите код, чтобы присоединиться."
+	online_status_label.text = tr("ONLINE_INTRO")
 	online_code_label.visible = false
 	online_create_group.visible = true
 	online_join_row.visible = true
@@ -551,40 +577,40 @@ func _setup_online_match() -> void:
 func _on_create_room_pressed() -> void:
 	var code := create_code_edit.text.strip_edges()
 	if code == "":
-		online_status_label.text = "Введите код комнаты или нажмите «Случайный»."
+		online_status_label.text = tr("ONLINE_EMPTY_CODE")
 		return
-	online_status_label.text = "Создаём комнату..."
+	online_status_label.text = tr("ONLINE_CREATING")
 	online_create_group.visible = false
 	online_join_row.visible = false
 	logic.reset_board()
 	_setup_online_match()
 	online_match.create_room(logic.to_dict(), code, public_checkbox.button_pressed)
-	online_code_label.text = "Код комнаты: " + online_match.room_code
+	online_code_label.text = tr("ONLINE_CODE_PREFIX") + online_match.room_code
 	online_code_label.visible = true
-	online_status_label.text = "Ожидание соперника..."
+	online_status_label.text = tr("ONLINE_WAITING")
 
 func _on_join_room_pressed() -> void:
 	var code := join_code_edit.text.strip_edges()
 	if code == "":
 		return
-	online_status_label.text = "Подключение..."
+	online_status_label.text = tr("ONLINE_CONNECTING")
 	online_create_group.visible = false
 	online_join_row.visible = false
 	_setup_online_match()
 	online_match.join_room(code)
 
 func _on_find_public_pressed() -> void:
-	online_status_label.text = "Ищем публичную игру..."
+	online_status_label.text = tr("ONLINE_FINDING_PUBLIC")
 	_setup_online_match()
 	online_match.find_public_room(_on_public_room_found)
 
 func _on_public_room_found(code: String) -> void:
 	if code == "":
-		online_status_label.text = "Нет доступных публичных комнат. Попробуйте позже."
+		online_status_label.text = tr("ONLINE_NO_PUBLIC")
 		online_match.leave()
 		online_match = null
 		return
-	online_status_label.text = "Подключение..."
+	online_status_label.text = tr("ONLINE_CONNECTING")
 	online_create_group.visible = false
 	online_join_row.visible = false
 	online_match.join_room(code)
@@ -595,8 +621,8 @@ func _on_online_cancel_pressed() -> void:
 		online_match = null
 	online_dialog.hide()
 
-func _on_online_join_failed(reason: String) -> void:
-	online_status_label.text = reason
+func _on_online_join_failed(reason_key: String) -> void:
+	online_status_label.text = tr(reason_key)
 	online_create_group.visible = true
 	online_join_row.visible = true
 	OnlineMatch.clear_saved_session()
@@ -626,11 +652,11 @@ func _build_resume_dialog() -> void:
 	resume_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(resume_label)
 
-	var yes_btn := _make_text_button("Продолжить", Vector2(300, 0))
+	var yes_btn := _make_text_button("RESUME_YES", Vector2(300, 0))
 	yes_btn.pressed.connect(_on_resume_confirmed)
 	vbox.add_child(yes_btn)
 
-	var no_btn := _make_text_button("Нет, в меню", Vector2(300, 0))
+	var no_btn := _make_text_button("RESUME_NO", Vector2(300, 0))
 	no_btn.pressed.connect(_on_resume_declined)
 	vbox.add_child(no_btn)
 
@@ -638,7 +664,7 @@ func _build_resume_dialog() -> void:
 
 func _offer_resume_session(session: Dictionary) -> void:
 	_pending_resume_session = session
-	resume_label.text = "Обнаружена незавершённая онлайн-партия (комната %s). Продолжить?" % session.get("room_code", "")
+	resume_label.text = tr("RESUME_PROMPT") % session.get("room_code", "")
 	resume_dialog.popup_centered(Vector2i(340, 240))
 
 func _on_resume_confirmed() -> void:
@@ -646,8 +672,8 @@ func _on_resume_confirmed() -> void:
 	var session := _pending_resume_session
 	var code: String = session.get("room_code", "")
 	_setup_online_match()
-	online_status_label.text = "Переподключение к комнате %s..." % code
-	online_code_label.text = "Код комнаты: " + code
+	online_status_label.text = tr("ONLINE_RECONNECTING") % code
+	online_code_label.text = tr("ONLINE_CODE_PREFIX") + code
 	online_code_label.visible = true
 	online_create_group.visible = false
 	online_join_row.visible = false
@@ -689,36 +715,39 @@ func _build_register_screen() -> void:
 	vbox.add_theme_constant_override("separation", 22)
 	center.add_child(vbox)
 
+	var language_option := _make_language_option()
+	vbox.add_child(language_option)
+
 	var title := Label.new()
-	title.text = "Добро пожаловать в Be_Bees!"
+	title.text = "REGISTER_WELCOME"
 	title.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
 	vbox.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Как вас называть?"
+	subtitle.text = "REGISTER_ASK_NAME"
 	subtitle.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	vbox.add_child(subtitle)
 
 	register_name_edit = LineEdit.new()
-	register_name_edit.placeholder_text = "Ваш ник"
+	register_name_edit.placeholder_text = "REGISTER_NAME_PLACEHOLDER"
 	register_name_edit.max_length = 20
 	register_name_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 56)
 	register_name_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
 	register_name_edit.text_submitted.connect(func(_t): _on_register_confirmed())
 	vbox.add_child(register_name_edit)
 
-	var confirm_btn := _make_text_button("Начать игру", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	var confirm_btn := _make_text_button("REGISTER_START", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	confirm_btn.pressed.connect(_on_register_confirmed)
 	vbox.add_child(confirm_btn)
 
 func _on_register_confirmed() -> void:
 	var new_name := register_name_edit.text.strip_edges()
 	if new_name == "":
-		new_name = "Игрок"
+		new_name = tr("DEFAULT_PLAYER_NAME")
 	UserProfile.set_player_name(new_name)
 	register_screen.visible = false
 
@@ -769,10 +798,10 @@ func _build_game_screen() -> void:
 	vbox.add_theme_constant_override("separation", 6)
 	promotion_dialog.add_child(vbox)
 	var promo_title := Label.new()
-	promo_title.text = "Выберите фигуру для превращения:"
+	promo_title.text = "PROMO_CHOOSE"
 	vbox.add_child(promo_title)
 	for t in PROMO_ORDER:
-		var btn := _make_text_button(PROMO_LABELS[t], Vector2(200, 0))
+		var btn := _make_text_button(PROMO_KEYS[t], Vector2(200, 0))
 		btn.pressed.connect(_on_promotion_chosen.bind(t))
 		vbox.add_child(btn)
 
@@ -795,7 +824,7 @@ func _build_game_screen() -> void:
 	game_over_subtitle.add_theme_font_size_override("font_size", 18)
 	go_vbox.add_child(game_over_subtitle)
 
-	var go_button := _make_text_button("Новая игра", Vector2(240, 0))
+	var go_button := _make_text_button("NEW_GAME", Vector2(240, 0))
 	go_button.pressed.connect(_on_new_game_pressed)
 	go_vbox.add_child(go_button)
 
@@ -841,7 +870,7 @@ func _build_confirm_dialog() -> void:
 	confirm_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	vbox.add_child(confirm_label)
 
-	var yes_btn := _make_text_button("Да, начать новую", Vector2(320, 0))
+	var yes_btn := _make_text_button("CONFIRM_YES_NEW", Vector2(320, 0))
 	yes_btn.pressed.connect(func():
 		confirm_dialog.hide()
 		if _confirm_action.is_valid():
@@ -849,7 +878,7 @@ func _build_confirm_dialog() -> void:
 	)
 	vbox.add_child(yes_btn)
 
-	var no_btn := _make_text_button("Отмена", Vector2(320, 0))
+	var no_btn := _make_text_button("BTN_CANCEL", Vector2(320, 0))
 	no_btn.pressed.connect(func(): confirm_dialog.hide())
 	vbox.add_child(no_btn)
 
@@ -933,28 +962,28 @@ func _after_move(from: Vector2i, to: Vector2i) -> void:
 func _refresh_status() -> void:
 	board_view.flipped = (my_color == "b") if online_match != null else (logic.turn == "b")
 	board_view.refresh()
-	var color_name: String = NAME_MAP[logic.turn]
+	var color_name: String = tr(COLOR_KEYS[logic.turn])
 	var in_check: bool = logic.is_in_check(logic.turn)
 	var has_moves: bool = logic.has_any_legal_moves(logic.turn)
-	var prefix: String = ("Вы — " + NAME_MAP[my_color] + ". ") if online_match != null else ""
+	var prefix: String = (tr("YOU_ARE_PREFIX") + tr(COLOR_KEYS[my_color]) + ". ") if online_match != null else ""
 	if not has_moves:
 		game_over = true
 		if in_check:
 			var winner_color: String = logic.opponent(logic.turn)
-			var winner: String = NAME_MAP[winner_color]
-			status_label.text = prefix + "Мат! Победа: " + winner
-			_show_game_over("Шах и мат!", "Победили: " + winner)
+			var winner: String = tr(COLOR_KEYS[winner_color])
+			status_label.text = prefix + tr("CHECKMATE_WIN") + winner
+			_show_game_over(tr("CHECKMATE_TITLE"), tr("WINNER_PREFIX") + winner)
 			UserProfile.record_game_result(winner_color)
 		else:
-			status_label.text = prefix + "Пат — ничья"
-			_show_game_over("Пат", "Ничья")
+			status_label.text = prefix + tr("STALEMATE_STATUS")
+			_show_game_over(tr("STALEMATE_TITLE"), tr("DRAW_TEXT"))
 			UserProfile.record_game_result("")
 	else:
 		game_over = false
 		if in_check:
-			status_label.text = prefix + color_name + " под шахом"
+			status_label.text = prefix + color_name + tr("CHECK_SUFFIX")
 		else:
-			status_label.text = prefix + "Ходят: " + color_name
+			status_label.text = prefix + tr("TURN_PREFIX") + color_name
 
 func _show_game_over(title_text: String, subtitle: String) -> void:
 	game_over_title.text = title_text
@@ -963,7 +992,7 @@ func _show_game_over(title_text: String, subtitle: String) -> void:
 
 func _on_new_game_pressed() -> void:
 	if _has_unfinished_online_match():
-		_confirm("Текущая онлайн-партия еще не завершена. Начать новую локальную игру?", _do_new_game_pressed)
+		_confirm(tr("CONFIRM_ABANDON_ONLINE"), _do_new_game_pressed)
 	else:
 		_do_new_game_pressed()
 

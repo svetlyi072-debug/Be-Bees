@@ -14,6 +14,7 @@ var sound_enabled: bool = true
 var music_enabled: bool = true
 var sound_volume_percent: float = 100.0
 var music_volume_percent: float = 100.0
+var language: String = "en"
 
 var _click_stream: AudioStream
 var _click_player: AudioStreamPlayer
@@ -21,6 +22,7 @@ var _music_player: AudioStreamPlayer
 
 func _ready() -> void:
 	_load()
+	_apply_language()
 
 	_click_player = AudioStreamPlayer.new()
 	add_child(_click_player)
@@ -73,6 +75,24 @@ func set_music_volume_percent(percent: float) -> void:
 	_apply_music_volume()
 	_save()
 
+func set_language(code: String) -> void:
+	language = code
+	_apply_language()
+	_save()
+
+func _apply_language() -> void:
+	if not TranslationServer.get_loaded_locales().has("ru"):
+		_register_translation("ru", GameTranslations.RU)
+		_register_translation("en", GameTranslations.EN)
+	TranslationServer.set_locale(language)
+
+func _register_translation(locale: String, strings: Dictionary) -> void:
+	var t := Translation.new()
+	t.locale = locale
+	for key in strings:
+		t.add_message(key, strings[key])
+	TranslationServer.add_translation(t)
+
 func _percent_to_db(percent: float, baseline_db: float) -> float:
 	if percent <= 0.5:
 		return MIN_AUDIBLE_DB
@@ -108,6 +128,7 @@ func _load() -> void:
 				music_enabled = parsed.get("music_enabled", true)
 				sound_volume_percent = parsed.get("sound_volume_percent", 100.0)
 				music_volume_percent = parsed.get("music_volume_percent", 100.0)
+				language = parsed.get("language", "en")
 
 func _save() -> void:
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -117,5 +138,6 @@ func _save() -> void:
 			"music_enabled": music_enabled,
 			"sound_volume_percent": sound_volume_percent,
 			"music_volume_percent": music_volume_percent,
+			"language": language,
 		}, "\t"))
 		file.close()
