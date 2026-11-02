@@ -4,6 +4,9 @@ extends RefCounted
 const WHITE := "w"
 const BLACK := "b"
 
+const PIECE_CODES := {"pawn": "p", "knight": "n", "bishop": "b", "rook": "r", "queen": "q", "king": "k"}
+const CODE_PIECES := {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
+
 var board: Array = []
 var turn: String = WHITE
 var en_passant_target: Vector2i = Vector2i(-1, -1)
@@ -304,30 +307,38 @@ func _update_castling_rights_for_corner(pos: Vector2i) -> void:
 		castling_rights["b_king"] = false
 
 func to_dict() -> Dictionary:
-	var board_data: Array = []
+	# The board travels as a single flat string ("wp", "bn", ".." for an
+	# empty square, 64 squares concatenated) rather than a nested array
+	# with null entries. Firebase Realtime Database mangles JSON arrays
+	# that contain null elements (common for a board — half the squares
+	# are empty in a fresh game), sometimes turning them into objects or
+	# dropping trailing nulls, which broke loading the very first
+	# synced position on some clients. A plain string has no such ambiguity.
+	var board_str := ""
 	for y in 8:
-		var row: Array = []
 		for x in 8:
 			var p = board[y][x]
-			row.append({"type": p.type, "color": p.color} if p != null else null)
-		board_data.append(row)
+			board_str += (p.color + PIECE_CODES[p.type]) if p != null else ".."
 	return {
-		"board": board_data,
+		"board": board_str,
 		"turn": turn,
 		"en_passant": {"x": en_passant_target.x, "y": en_passant_target.y},
 		"castling": castling_rights.duplicate(),
 	}
 
 func load_from_dict(data: Dictionary) -> void:
-	var board_data: Array = data.get("board", [])
+	var board_str: String = str(data.get("board", ""))
 	board = []
 	for y in 8:
 		var row: Array = []
 		row.resize(8)
-		var src_row = board_data[y] if y < board_data.size() else []
 		for x in 8:
-			var cell = src_row[x] if x < src_row.size() else null
-			row[x] = {"type": cell.type, "color": cell.color} if cell != null else null
+			var idx := (y * 8 + x) * 2
+			var code := board_str.substr(idx, 2) if idx + 2 <= board_str.length() else ".."
+			if code == "..":
+				row[x] = null
+			else:
+				row[x] = {"type": CODE_PIECES.get(code.substr(1, 1), "pawn"), "color": code.substr(0, 1)}
 		board.append(row)
 	turn = data.get("turn", WHITE)
 	var ep: Dictionary = data.get("en_passant", {})
