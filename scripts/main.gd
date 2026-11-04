@@ -36,9 +36,14 @@ var online_create_btn: Button
 var online_join_row: Control
 var join_code_edit: LineEdit
 var create_code_edit: LineEdit
+var room_name_edit: LineEdit
 var public_checkbox: CheckBox
 var find_public_btn: Button
 var online_create_group: Control
+
+var public_list_dialog: PopupPanel
+var public_list_status: Label
+var public_list_container: VBoxContainer
 
 var online_match: OnlineMatch = null
 var my_color: String = "w"
@@ -204,6 +209,7 @@ func _build_menu_screen() -> void:
 	_build_settings_dialog()
 	_build_mode_dialog()
 	_build_online_dialog()
+	_build_public_list_dialog()
 
 func _make_info_dialog(title_text: String, message: String) -> PopupPanel:
 	var dialog := PopupPanel.new()
@@ -501,6 +507,13 @@ func _build_online_dialog() -> void:
 	online_create_group.add_theme_constant_override("separation", 14)
 	vbox.add_child(online_create_group)
 
+	room_name_edit = LineEdit.new()
+	room_name_edit.placeholder_text = "ONLINE_ROOM_NAME_PLACEHOLDER"
+	room_name_edit.max_length = 40
+	room_name_edit.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 56)
+	room_name_edit.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	online_create_group.add_child(room_name_edit)
+
 	var create_row := HBoxContainer.new()
 	create_row.add_theme_constant_override("separation", 16)
 	online_create_group.add_child(create_row)
@@ -544,7 +557,7 @@ func _build_online_dialog() -> void:
 	join_btn.pressed.connect(_on_join_room_pressed)
 	join_row.add_child(join_btn)
 
-	find_public_btn = _make_text_button("ONLINE_FIND_PUBLIC", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	find_public_btn = _make_text_button("ONLINE_PUBLIC_LIST_BTN", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	find_public_btn.pressed.connect(_on_find_public_pressed)
 	online_join_row.add_child(find_public_btn)
 
@@ -554,15 +567,60 @@ func _build_online_dialog() -> void:
 
 	add_child(online_dialog)
 
+func _build_public_list_dialog() -> void:
+	public_list_dialog = PopupPanel.new()
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	public_list_dialog.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 18)
+	center.add_child(vbox)
+
+	var title_label := Label.new()
+	title_label.text = "PUBLIC_LIST_TITLE"
+	title_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override("font_size", DIALOG_TITLE_FONT)
+	vbox.add_child(title_label)
+
+	public_list_status = Label.new()
+	public_list_status.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
+	public_list_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	public_list_status.autowrap_mode = TextServer.AUTOWRAP_WORD
+	public_list_status.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
+	vbox.add_child(public_list_status)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 320)
+	vbox.add_child(scroll)
+
+	public_list_container = VBoxContainer.new()
+	public_list_container.add_theme_constant_override("separation", 10)
+	public_list_container.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
+	scroll.add_child(public_list_container)
+
+	var close_btn := _make_text_button("BTN_CLOSE", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	close_btn.pressed.connect(func(): public_list_dialog.hide())
+	vbox.add_child(close_btn)
+
+	add_child(public_list_dialog)
+
 func _show_online_dialog() -> void:
 	online_status_label.text = tr("ONLINE_INTRO")
 	online_code_label.visible = false
 	online_create_group.visible = true
 	online_join_row.visible = true
+	room_name_edit.text = ""
 	create_code_edit.text = OnlineMatch.generate_room_code()
 	public_checkbox.button_pressed = false
 	join_code_edit.text = ""
 	online_dialog.popup_centered_ratio(0.65)
+
+func _format_room_label(room_name: String, code: String) -> String:
+	if room_name.strip_edges() == "":
+		return tr("ONLINE_CODE_PREFIX") + code
+	return room_name + "  —  " + tr("ONLINE_CODE_PREFIX") + code
 
 func _leave_online_match() -> void:
 	if online_match != null:
@@ -588,8 +646,8 @@ func _on_create_room_pressed() -> void:
 	online_join_row.visible = false
 	logic.reset_board()
 	_setup_online_match()
-	online_match.create_room(logic.to_dict(), code, public_checkbox.button_pressed)
-	online_code_label.text = tr("ONLINE_CODE_PREFIX") + online_match.room_code
+	online_match.create_room(logic.to_dict(), code, public_checkbox.button_pressed, room_name_edit.text)
+	online_code_label.text = _format_room_label(online_match.room_name, online_match.room_code)
 	online_code_label.visible = true
 	online_status_label.text = tr("ONLINE_WAITING")
 
@@ -604,18 +662,38 @@ func _on_join_room_pressed() -> void:
 	online_match.join_room(code)
 
 func _on_find_public_pressed() -> void:
-	online_status_label.text = tr("ONLINE_FINDING_PUBLIC")
+	for child in public_list_container.get_children():
+		child.queue_free()
+	public_list_status.text = tr("ONLINE_FINDING_PUBLIC")
+	public_list_dialog.popup_centered_ratio(0.6)
 	_setup_online_match()
-	online_match.find_public_room(_on_public_room_found)
+	online_match.list_public_rooms(_on_public_rooms_listed)
 
-func _on_public_room_found(code: String) -> void:
-	if code == "":
-		online_status_label.text = tr("ONLINE_NO_PUBLIC")
-		_leave_online_match()
+func _on_public_rooms_listed(rooms: Array) -> void:
+	for child in public_list_container.get_children():
+		child.queue_free()
+	if rooms.is_empty():
+		public_list_status.text = tr("ONLINE_NO_PUBLIC")
 		return
+	public_list_status.text = ""
+	for room in rooms:
+		var room_code: String = room.get("code", "")
+		var room_label: String = room.get("name", "")
+		if room_label.strip_edges() == "":
+			room_label = tr("PUBLIC_ROOM_UNNAMED")
+		var btn := _make_text_button(
+			room_label + "   (" + room_code + ")",
+			Vector2(DIALOG_CONTENT_WIDTH - 20, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT
+		)
+		btn.pressed.connect(_on_public_room_selected.bind(room_code))
+		public_list_container.add_child(btn)
+
+func _on_public_room_selected(code: String) -> void:
+	public_list_dialog.hide()
 	online_status_label.text = tr("ONLINE_CONNECTING")
 	online_create_group.visible = false
 	online_join_row.visible = false
+	online_dialog.popup_centered_ratio(0.65)
 	online_match.join_room(code)
 
 func _on_online_cancel_pressed() -> void:

@@ -12,8 +12,11 @@ const ROOM_CODE_LENGTH := 5
 const SESSION_PATH := "user://online_session.json"
 const GAMES_PATH := "games"
 const PUBLIC_ROOMS_PATH := "public_rooms"
+const ROOM_NAME_MAX_LENGTH := 40
+const STALE_SECONDS := 86400  # 24 hours of no activity — auto-expire and delete.
 
 var room_code: String = ""
+var room_name: String = ""
 var my_color: String = "w"
 var is_host: bool = false
 var active: bool = false
@@ -65,12 +68,30 @@ static func safe_int(value: Variant, default: int) -> int:
 	# to, so never hand it an unchecked Variant.
 	return int(value) if value is int or value is float else default
 
-func create_room(logic_state: Dictionary, code: String, make_public: bool) -> void:
+static func safe_string(value: Variant, default: String) -> String:
+	return value if value is String else default
+
+static func safe_bool(value: Variant, default: bool) -> bool:
+	return value if value is bool else default
+
+func _is_stale(data: Dictionary) -> bool:
+	var updated_at = data.get("updated_at", null)
+	if not (updated_at is int or updated_at is float):
+		return false  # no timestamp recorded — don't expire it blindly
+	return Time.get_unix_time_from_system() - updated_at > STALE_SECONDS
+
+func _delete_room(code: String, was_public: bool) -> void:
+	_send_delete("%s/%s" % [GAMES_PATH, code], func(_ok): pass)
+	if was_public:
+		_send_delete("%s/%s" % [PUBLIC_ROOMS_PATH, code], func(_ok): pass)
+
+func create_room(logic_state: Dictionary, code: String, make_public: bool, name: String) -> void:
 	var clean_code := sanitize_room_code(code)
 	if clean_code == "":
 		join_failed.emit("ONLINE_CODE_EMPTY_ERR")
 		return
 	room_code = clean_code
+	room_name = name.strip_edges().substr(0, ROOM_NAME_MAX_LENGTH)
 	is_host = true
 	my_color = "w"
 	is_public = make_public
@@ -85,6 +106,8 @@ func _on_create_room_checked(ok: bool, existing: Variant, logic_state: Dictionar
 	data["move_count"] = 0
 	data["last_move"] = null
 	data["is_public"] = is_public
+	data["name"] = room_name
+	data["updated_at"] = Time.get_unix_time_from_system()
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_create_room_done)
 
 func _on_create_room_done(ok: bool, _data: Variant) -> void:
@@ -97,15 +120,30 @@ func _on_create_room_done(ok: bool, _data: Variant) -> void:
 	_poll_timer.start()
 	_save_session()
 	if is_public:
-		_send_put("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], {"created_at": Time.get_unix_time_from_system()}, func(_ok, _d): pass)
+		_send_put("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], {
+			"created_at": Time.get_unix_time_from_system(),
+			"name": room_name,
+		}, func(_ok, _d): pass)
 
-func find_public_room(on_found: Callable) -> void:
+func list_public_rooms(on_done: Callable) -> void:
 	_send_get(PUBLIC_ROOMS_PATH, func(ok: bool, data: Variant):
-		if not ok or not (data is Dictionary) or data.is_empty():
-			on_found.call("")
+		if not ok or not (data is Dictionary):
+			on_done.call([])
 			return
-		var codes: Array = data.keys()
-		on_found.call(codes[randi() % codes.size()])
+		var now := Time.get_unix_time_from_system()
+		var result := []
+		for code in data.keys():
+			var entry = data[code]
+			if not (entry is Dictionary):
+				continue
+			var created_at = entry.get("created_at", null)
+			if (created_at is int or created_at is float) and now - created_at > STALE_SECONDS:
+				# Stale — nobody joined within 24h. Clean it up opportunistically
+				# and leave it off the list rather than show a dead room.
+				_delete_room(code, true)
+				continue
+			result.append({"code": code, "name": safe_string(entry.get("name", ""), "")})
+		on_done.call(result)
 	)
 
 func join_room(code: String) -> void:
@@ -119,15 +157,20 @@ func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 	if not ok or not (data is Dictionary):
 		join_failed.emit("ONLINE_ROOM_NOT_FOUND")
 		return
+	if _is_stale(data):
+		_delete_room(clean_code, safe_bool(data.get("is_public", false), false))
+		join_failed.emit("ONLINE_ROOM_NOT_FOUND")
+		return
 	if data.get("status", "") != "waiting":
 		join_failed.emit("ONLINE_ROOM_BUSY")
 		return
 	room_code = clean_code
 	is_host = false
 	my_color = "b"
-	var is_public_value = data.get("is_public", false)
-	is_public = is_public_value if is_public_value is bool else false
+	is_public = safe_bool(data.get("is_public", false), false)
+	room_name = safe_string(data.get("name", ""), "")
 	data["status"] = "active"
+	data["updated_at"] = Time.get_unix_time_from_system()
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_join_room_put_done)
 
 func _on_join_room_put_done(ok: bool, data: Variant) -> void:
@@ -152,8 +195,12 @@ func _on_resume_fetched(ok: bool, data: Variant) -> void:
 	if not ok or not (data is Dictionary):
 		join_failed.emit("ONLINE_ROOM_GONE")
 		return
-	var is_public_value = data.get("is_public", false)
-	is_public = is_public_value if is_public_value is bool else false
+	if _is_stale(data):
+		_delete_room(room_code, safe_bool(data.get("is_public", false), false))
+		join_failed.emit("ONLINE_ROOM_EXPIRED")
+		return
+	is_public = safe_bool(data.get("is_public", false), false)
+	room_name = safe_string(data.get("name", ""), "")
 	_last_move_count = safe_int(data.get("move_count", 0), 0)
 	active = true
 	_poll_timer.start()
@@ -169,15 +216,19 @@ func submit_move(logic_state: Dictionary, last_move: Array) -> void:
 	data["move_count"] = _last_move_count + 1
 	data["last_move"] = _encode_move(last_move)
 	data["is_public"] = is_public
+	data["name"] = room_name
+	data["updated_at"] = Time.get_unix_time_from_system()
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_submit_move_done)
 
 func _on_submit_move_done(ok: bool, data: Variant) -> void:
 	if ok:
-		_last_move_count = data["move_count"]
+		_last_move_count = safe_int(data.get("move_count", 0), _last_move_count)
 
 func leave() -> void:
-	if active and is_host and _waiting_for_opponent and is_public:
-		_send_delete("%s/%s" % [PUBLIC_ROOMS_PATH, room_code], func(_ok): pass)
+	if active and is_host and _waiting_for_opponent:
+		# Nobody ever joined — no point leaving a dead room sitting around
+		# for 24h, clean it up immediately instead of waiting for it to expire.
+		_delete_room(room_code, is_public)
 	active = false
 	_poll_timer.stop()
 	clear_saved_session()
@@ -224,6 +275,16 @@ func _poll() -> void:
 func _on_poll_fetched(ok: bool, data: Variant) -> void:
 	_poll_in_flight = false
 	if not ok or not (data is Dictionary):
+		return
+	if _is_stale(data):
+		# Our own room went 24h with nobody acting on it (most likely we
+		# created it and left the app open waiting, and nobody ever
+		# joined). Expire it rather than poll a dead room forever.
+		_delete_room(room_code, safe_bool(data.get("is_public", false), false))
+		active = false
+		_poll_timer.stop()
+		clear_saved_session()
+		join_failed.emit("ONLINE_ROOM_EXPIRED")
 		return
 	if _waiting_for_opponent and data.get("status", "") == "active":
 		_waiting_for_opponent = false

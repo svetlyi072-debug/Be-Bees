@@ -13,10 +13,8 @@
       }
     },
     "public_rooms": {
-      "$code": {
-        ".read": true,
-        ".write": true
-      }
+      ".read": true,
+      ".write": true
     },
     "users": {
       "$id": {
