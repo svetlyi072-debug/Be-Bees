@@ -185,10 +185,14 @@ func _build_menu_screen() -> void:
 
 	var button_row := HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	button_row.add_theme_constant_override("separation", 32)
+	button_row.add_theme_constant_override("separation", 24)
 	panel.add_child(button_row)
 
-	var icon_size := Vector2(180, 180)
+	# 4 icons + 3 gaps must fit inside the 720-wide viewport — at the maximized
+	# desktop window size there was room to spare, but on a phone (scaled to
+	# fill 720 width exactly) the old 180px/32px sizing overflowed it, clipping
+	# the rightmost icon off-screen.
+	var icon_size := Vector2(150, 150)
 
 	var new_game_btn := _make_icon_button("new_game", icon_size)
 	new_game_btn.pressed.connect(func(): mode_dialog.popup_centered_ratio(0.55))
