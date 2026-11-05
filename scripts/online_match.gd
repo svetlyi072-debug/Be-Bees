@@ -249,6 +249,24 @@ func leave() -> void:
 	_poll_timer.stop()
 	clear_saved_session()
 
+# The game reached checkmate/stalemate — unlike leave(), this deletes the
+# room unconditionally (win or lose, it's done either way), so a finished
+# match doesn't sit around forever looking "active" and getting offered
+# back as an unfinished game to resume.
+func finish() -> void:
+	if active:
+		_delete_room(room_code)
+	active = false
+	_poll_timer.stop()
+	clear_saved_session()
+
+# One-shot cleanup for a room this client knows the code of but never
+# instantiated a full session for (e.g. declining to resume a saved match).
+# Frees itself once the delete requests have had time to land.
+func discard_room(code: String) -> void:
+	_delete_room(code)
+	get_tree().create_timer(3.0).timeout.connect(queue_free)
+
 static func load_saved_session() -> Dictionary:
 	if not FileAccess.file_exists(SESSION_PATH):
 		return {}

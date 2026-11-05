@@ -679,9 +679,15 @@ func _on_create_room_pressed() -> void:
 	logic.reset_board()
 	_setup_online_match()
 	online_match.create_room(logic.to_dict(), code, room_name_edit.text)
-	online_code_label.text = _format_room_label(online_match.room_name, online_match.room_code)
-	online_code_label.visible = true
-	online_status_label.text = tr("ONLINE_WAITING")
+	if online_match.is_public:
+		# No code was set, so there's nothing worth showing here — the room
+		# is found by name in the room list, not by typing a code.
+		online_code_label.visible = false
+		online_status_label.text = tr("ONLINE_PUBLIC_WAITING")
+	else:
+		online_code_label.text = _format_room_label(online_match.room_name, online_match.room_code)
+		online_code_label.visible = true
+		online_status_label.text = tr("ONLINE_WAITING")
 
 func _on_join_room_pressed() -> void:
 	var code := join_code_edit.text.strip_edges()
@@ -820,7 +826,14 @@ func _on_resume_confirmed() -> void:
 
 func _on_resume_declined() -> void:
 	resume_dialog.hide()
+	var room_code: String = _pending_resume_session.get("room_code", "")
 	OnlineMatch.clear_saved_session()
+	if room_code != "":
+		# Declining means neither side is coming back to it — delete it
+		# instead of leaving it on Firebase to keep getting offered.
+		var cleanup := OnlineMatch.new()
+		add_child(cleanup)
+		cleanup.discard_room(room_code)
 
 func _on_online_state_updated(state: Dictionary) -> void:
 	logic.load_from_dict(state)
@@ -1123,11 +1136,18 @@ func _refresh_status() -> void:
 			var winner: String = tr(COLOR_KEYS[winner_color])
 			status_label.text = prefix + tr("CHECKMATE_WIN") + winner
 			_show_game_over(tr("CHECKMATE_TITLE"), tr("WINNER_PREFIX") + winner)
-			UserProfile.record_game_result(winner_color)
+			if online_match != null:
+				UserProfile.record_game_result(winner_color)
 		else:
 			status_label.text = prefix + tr("STALEMATE_STATUS")
 			_show_game_over(tr("STALEMATE_TITLE"), tr("DRAW_TEXT"))
-			UserProfile.record_game_result("")
+			if online_match != null:
+				UserProfile.record_game_result("")
+		# A finished online match has nowhere left to go — delete the room
+		# instead of leaving it sitting in Firebase forever as "active", which
+		# is also what kept re-offering it as an unfinished match to resume.
+		if online_match != null:
+			online_match.finish()
 	else:
 		game_over = false
 		if in_check:
