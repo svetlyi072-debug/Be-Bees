@@ -4,3 +4,6 @@
 
 # Local tooling state, not project content
 .claude/
+
+# Local build output, not project content
+/exports/
