@@ -64,7 +64,11 @@ const RU := {
 	"RESUME_NO": "Нет, в меню",
 
 	"CONFIRM_ABANDON_ONLINE": "Текущая онлайн-партия еще не завершена. Начать новую локальную игру?",
-	"CONFIRM_YES_NEW": "Да, начать новую",
+	"CONFIRM_EXIT_ONLINE": "Текущая онлайн-партия ещё не завершена. Выйти в главное меню?",
+	"CONFIRM_YES_NEW": "Да",
+	"PAUSE_TITLE": "Пауза",
+	"PAUSE_CONTINUE": "Продолжить",
+	"PAUSE_EXIT_TO_MENU": "Выйти в главное меню",
 
 	"REGISTER_WELCOME": "Добро пожаловать в Be_Bees!",
 	"REGISTER_ASK_NAME": "Как вас называть?",
@@ -154,7 +158,11 @@ const EN := {
 	"RESUME_NO": "No, go to menu",
 
 	"CONFIRM_ABANDON_ONLINE": "The current online game isn't finished yet. Start a new local game?",
-	"CONFIRM_YES_NEW": "Yes, start new",
+	"CONFIRM_EXIT_ONLINE": "The current online game isn't finished yet. Exit to the main menu?",
+	"CONFIRM_YES_NEW": "Yes",
+	"PAUSE_TITLE": "Pause",
+	"PAUSE_CONTINUE": "Continue",
+	"PAUSE_EXIT_TO_MENU": "Exit to main menu",
 
 	"REGISTER_WELCOME": "Welcome to Be_Bees!",
 	"REGISTER_ASK_NAME": "What should we call you?",

@@ -104,7 +104,9 @@ func create_room(logic_state: Dictionary, code: String, name: String) -> void:
 	room_code = clean_code
 	room_name = name.strip_edges().substr(0, ROOM_NAME_MAX_LENGTH)
 	is_host = true
-	my_color = "w"
+	# Which color the host gets is random, not always white — the joiner
+	# takes whatever's left (see _on_join_room_fetched's host_color read).
+	my_color = "w" if randi() % 2 == 0 else "b"
 	is_public = make_public
 	_send_get("%s/%s" % [GAMES_PATH, room_code], _on_create_room_checked.bind(logic_state))
 
@@ -118,6 +120,7 @@ func _on_create_room_checked(ok: bool, existing: Variant, logic_state: Dictionar
 	data["last_move"] = null
 	data["is_public"] = is_public
 	data["name"] = room_name
+	data["host_color"] = my_color
 	data["updated_at"] = Time.get_unix_time_from_system()
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_create_room_done)
 
@@ -183,7 +186,10 @@ func _on_join_room_fetched(ok: bool, data: Variant, clean_code: String) -> void:
 		return
 	room_code = clean_code
 	is_host = false
-	my_color = "b"
+	# Take whichever color the host didn't pick — host's color was randomized
+	# at creation (see create_room), not hardcoded to white.
+	var host_color := safe_string(data.get("host_color", "w"), "w")
+	my_color = "b" if host_color == "w" else "w"
 	is_public = safe_bool(data.get("is_public", false), false)
 	room_name = safe_string(data.get("name", ""), "")
 	data["status"] = "active"
@@ -233,6 +239,7 @@ func submit_move(logic_state: Dictionary, last_move: Array) -> void:
 	data["last_move"] = _encode_move(last_move)
 	data["is_public"] = is_public
 	data["name"] = room_name
+	data["host_color"] = my_color if is_host else ("b" if my_color == "w" else "w")
 	data["updated_at"] = Time.get_unix_time_from_system()
 	_send_put("%s/%s" % [GAMES_PATH, room_code], data, _on_submit_move_done)
 

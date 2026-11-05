@@ -4,6 +4,8 @@ var logic: ChessLogic
 var board_view: BoardView
 var status_label: Label
 var new_game_button: TextureButton
+var pause_button: TextureButton
+var pause_dialog: PopupPanel
 var promotion_dialog: PopupPanel
 var pending_promotion_move: Array = []
 var game_over: bool = false
@@ -960,6 +962,11 @@ func _build_game_screen() -> void:
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	button_row.add_child(new_game_button)
 
+	pause_button = _make_icon_button("pause", in_game_icon_size)
+	pause_button.pressed.connect(_on_pause_pressed)
+	button_row.add_child(pause_button)
+	_build_pause_dialog()
+
 	promotion_dialog = PopupPanel.new()
 	game_screen.add_child(promotion_dialog)
 	var vbox := VBoxContainer.new()
@@ -1061,7 +1068,42 @@ func _on_continue_pressed() -> void:
 		_show_game()
 
 func _on_to_menu_pressed() -> void:
+	_leave_online_match()
 	_show_menu()
+
+func _build_pause_dialog() -> void:
+	pause_dialog = PopupPanel.new()
+	var vbox := VBoxContainer.new()
+	vbox.position = Vector2(20, 20)
+	vbox.add_theme_constant_override("separation", 14)
+	pause_dialog.add_child(vbox)
+
+	var title_label := Label.new()
+	title_label.text = "PAUSE_TITLE"
+	title_label.custom_minimum_size = Vector2(280, 0)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.add_theme_font_size_override("font_size", 24)
+	vbox.add_child(title_label)
+
+	var continue_btn := _make_text_button("PAUSE_CONTINUE", Vector2(280, 0))
+	continue_btn.pressed.connect(func(): pause_dialog.hide())
+	vbox.add_child(continue_btn)
+
+	var exit_btn := _make_text_button("PAUSE_EXIT_TO_MENU", Vector2(280, 0))
+	exit_btn.pressed.connect(_on_pause_exit_pressed)
+	vbox.add_child(exit_btn)
+
+	game_screen.add_child(pause_dialog)
+
+func _on_pause_pressed() -> void:
+	pause_dialog.popup_centered(Vector2i(320, 240))
+
+func _on_pause_exit_pressed() -> void:
+	pause_dialog.hide()
+	if _has_unfinished_online_match():
+		_confirm(tr("CONFIRM_EXIT_ONLINE"), _on_to_menu_pressed)
+	else:
+		_on_to_menu_pressed()
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()
