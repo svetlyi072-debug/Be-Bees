@@ -44,6 +44,8 @@ func _display(pos: Vector2i) -> Vector2i:
 # center, via pivot_offset) is visually identical to the old (7-x, 7-y)
 # coordinate flip — Godot delivers _gui_input positions already adjusted for
 # the node's rotation, so click-to-square mapping keeps working unchanged.
+# Pieces counter-rotate around their OWN centers (see _counter_rotate_pieces)
+# so their icons stay upright throughout — only the board itself visibly spins.
 func set_flipped(new_flipped: bool, animate: bool = true) -> void:
 	if new_flipped == flipped:
 		return
@@ -53,12 +55,21 @@ func set_flipped(new_flipped: bool, animate: bool = true) -> void:
 		_flip_tween.kill()
 	if not animate:
 		rotation = target_rotation
+		_counter_rotate_pieces()
 		return
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flip_tween = create_tween()
 	_flip_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-	_flip_tween.tween_property(self, "rotation", target_rotation, 0.5)
+	_flip_tween.tween_method(_apply_rotation, rotation, target_rotation, 0.5)
 	_flip_tween.finished.connect(func(): mouse_filter = Control.MOUSE_FILTER_STOP)
+
+func _apply_rotation(value: float) -> void:
+	rotation = value
+	_counter_rotate_pieces()
+
+func _counter_rotate_pieces() -> void:
+	for child in piece_layer.get_children():
+		child.rotation = -rotation
 
 func _to_screen(pos: Vector2i) -> Vector2:
 	var d := _display(pos)
@@ -113,6 +124,8 @@ func _make_piece_node(pos: Vector2i, piece) -> Control:
 		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		rect.position = Vector2(screen_pos.x + margin, screen_pos.y + margin)
 		rect.size = Vector2(SQUARE_SIZE - margin * 2, SQUARE_SIZE - margin * 2)
+		rect.pivot_offset = rect.size / 2.0
+		rect.rotation = -rotation
 		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		return rect
 	return _make_placeholder_node(screen_pos, piece)
@@ -121,6 +134,8 @@ func _make_placeholder_node(screen_pos: Vector2, piece) -> Control:
 	var holder := Control.new()
 	holder.position = screen_pos
 	holder.size = Vector2(SQUARE_SIZE, SQUARE_SIZE)
+	holder.pivot_offset = holder.size / 2.0
+	holder.rotation = -rotation
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var d := SQUARE_SIZE * 0.72
