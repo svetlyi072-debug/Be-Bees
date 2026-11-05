@@ -37,13 +37,16 @@ var online_join_row: Control
 var join_code_edit: LineEdit
 var create_code_edit: LineEdit
 var room_name_edit: LineEdit
-var public_checkbox: CheckBox
 var find_public_btn: Button
 var online_create_group: Control
 
 var public_list_dialog: PopupPanel
 var public_list_status: Label
 var public_list_container: VBoxContainer
+
+var room_code_prompt_dialog: PopupPanel
+var room_code_prompt_label: Label
+var room_code_prompt_edit: LineEdit
 
 var online_match: OnlineMatch = null
 var my_color: String = "w"
@@ -210,6 +213,7 @@ func _build_menu_screen() -> void:
 	_build_mode_dialog()
 	_build_online_dialog()
 	_build_public_list_dialog()
+	_build_room_code_prompt_dialog()
 
 func _make_info_dialog(title_text: String, message: String) -> PopupPanel:
 	var dialog := PopupPanel.new()
@@ -529,10 +533,13 @@ func _build_online_dialog() -> void:
 	random_btn.pressed.connect(func(): create_code_edit.text = OnlineMatch.generate_room_code())
 	create_row.add_child(random_btn)
 
-	public_checkbox = CheckBox.new()
-	public_checkbox.text = "ONLINE_PUBLIC_CHECKBOX"
-	public_checkbox.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT)
-	online_create_group.add_child(public_checkbox)
+	var code_hint_label := Label.new()
+	code_hint_label.text = "ONLINE_CODE_HINT"
+	code_hint_label.custom_minimum_size = Vector2(DIALOG_CONTENT_WIDTH, 0)
+	code_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	code_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	code_hint_label.add_theme_font_size_override("font_size", DIALOG_TEXT_FONT - 2)
+	online_create_group.add_child(code_hint_label)
 
 	online_create_btn = _make_text_button("ONLINE_CREATE_BTN", Vector2(DIALOG_CONTENT_WIDTH, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
 	online_create_btn.pressed.connect(_on_create_room_pressed)
@@ -606,14 +613,42 @@ func _build_public_list_dialog() -> void:
 
 	add_child(public_list_dialog)
 
+func _build_room_code_prompt_dialog() -> void:
+	room_code_prompt_dialog = PopupPanel.new()
+	var vbox := VBoxContainer.new()
+	vbox.position = Vector2(20, 20)
+	vbox.add_theme_constant_override("separation", 14)
+	room_code_prompt_dialog.add_child(vbox)
+
+	room_code_prompt_label = Label.new()
+	room_code_prompt_label.custom_minimum_size = Vector2(320, 0)
+	room_code_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	room_code_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(room_code_prompt_label)
+
+	room_code_prompt_edit = LineEdit.new()
+	room_code_prompt_edit.placeholder_text = "ONLINE_JOIN_PLACEHOLDER"
+	room_code_prompt_edit.max_length = 12
+	room_code_prompt_edit.custom_minimum_size = Vector2(320, 56)
+	vbox.add_child(room_code_prompt_edit)
+
+	var confirm_btn := _make_text_button("ONLINE_JOIN_BTN", Vector2(320, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	confirm_btn.pressed.connect(_on_room_code_prompt_confirmed)
+	vbox.add_child(confirm_btn)
+
+	var cancel_btn := _make_text_button("BTN_CANCEL", Vector2(320, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT)
+	cancel_btn.pressed.connect(func(): room_code_prompt_dialog.hide())
+	vbox.add_child(cancel_btn)
+
+	add_child(room_code_prompt_dialog)
+
 func _show_online_dialog() -> void:
 	online_status_label.text = tr("ONLINE_INTRO")
 	online_code_label.visible = false
 	online_create_group.visible = true
 	online_join_row.visible = true
 	room_name_edit.text = ""
-	create_code_edit.text = OnlineMatch.generate_room_code()
-	public_checkbox.button_pressed = false
+	create_code_edit.text = ""
 	join_code_edit.text = ""
 	online_dialog.popup_centered_ratio(0.65)
 
@@ -638,15 +673,12 @@ func _setup_online_match() -> void:
 
 func _on_create_room_pressed() -> void:
 	var code := create_code_edit.text.strip_edges()
-	if code == "":
-		online_status_label.text = tr("ONLINE_EMPTY_CODE")
-		return
 	online_status_label.text = tr("ONLINE_CREATING")
 	online_create_group.visible = false
 	online_join_row.visible = false
 	logic.reset_board()
 	_setup_online_match()
-	online_match.create_room(logic.to_dict(), code, public_checkbox.button_pressed, room_name_edit.text)
+	online_match.create_room(logic.to_dict(), code, room_name_edit.text)
 	online_code_label.text = _format_room_label(online_match.room_name, online_match.room_code)
 	online_code_label.visible = true
 	online_status_label.text = tr("ONLINE_WAITING")
@@ -667,7 +699,7 @@ func _on_find_public_pressed() -> void:
 	public_list_status.text = tr("ONLINE_FINDING_PUBLIC")
 	public_list_dialog.popup_centered_ratio(0.6)
 	_setup_online_match()
-	online_match.list_public_rooms(_on_public_rooms_listed)
+	online_match.list_rooms(_on_public_rooms_listed)
 
 func _on_public_rooms_listed(rooms: Array) -> void:
 	for child in public_list_container.get_children():
@@ -678,17 +710,43 @@ func _on_public_rooms_listed(rooms: Array) -> void:
 	public_list_status.text = ""
 	for room in rooms:
 		var room_code: String = room.get("code", "")
+		var room_is_public: bool = room.get("is_public", true)
 		var room_label: String = room.get("name", "")
 		if room_label.strip_edges() == "":
 			room_label = tr("PUBLIC_ROOM_UNNAMED")
+		var display_text: String
+		if room_is_public:
+			display_text = room_label + "   (" + room_code + ")"
+		else:
+			display_text = tr("PRIVATE_ROOM_TAG") + room_label
 		var btn := _make_text_button(
-			room_label + "   (" + room_code + ")",
+			display_text,
 			Vector2(DIALOG_CONTENT_WIDTH - 20, DIALOG_BUTTON_HEIGHT), DIALOG_BUTTON_FONT
 		)
-		btn.pressed.connect(_on_public_room_selected.bind(room_code))
+		if room_is_public:
+			btn.pressed.connect(_on_public_room_selected.bind(room_code))
+		else:
+			btn.pressed.connect(_on_private_room_selected.bind(room_label))
 		public_list_container.add_child(btn)
 
 func _on_public_room_selected(code: String) -> void:
+	public_list_dialog.hide()
+	online_status_label.text = tr("ONLINE_CONNECTING")
+	online_create_group.visible = false
+	online_join_row.visible = false
+	online_dialog.popup_centered_ratio(0.65)
+	online_match.join_room(code)
+
+func _on_private_room_selected(room_label: String) -> void:
+	room_code_prompt_label.text = tr("ROOM_CODE_PROMPT") % room_label
+	room_code_prompt_edit.text = ""
+	room_code_prompt_dialog.popup_centered(Vector2i(360, 220))
+
+func _on_room_code_prompt_confirmed() -> void:
+	var code := room_code_prompt_edit.text.strip_edges()
+	room_code_prompt_dialog.hide()
+	if code == "":
+		return
 	public_list_dialog.hide()
 	online_status_label.text = tr("ONLINE_CONNECTING")
 	online_create_group.visible = false
@@ -1052,7 +1110,7 @@ func _after_move(from: Vector2i, to: Vector2i) -> void:
 		online_match.submit_move(logic.to_dict(), [from, to])
 
 func _refresh_status() -> void:
-	board_view.flipped = (my_color == "b") if online_match != null else (logic.turn == "b")
+	board_view.set_flipped((my_color == "b") if online_match != null else (logic.turn == "b"))
 	board_view.refresh()
 	var color_name: String = tr(COLOR_KEYS[logic.turn])
 	var in_check: bool = logic.is_in_check(logic.turn)

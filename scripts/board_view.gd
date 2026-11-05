@@ -21,11 +21,13 @@ var flipped: bool = false
 
 var piece_layer: Control
 var _texture_cache: Dictionary = {}
+var _flip_tween: Tween
 
 func _init(square_size: int = 80) -> void:
 	SQUARE_SIZE = square_size
 	custom_minimum_size = Vector2(SQUARE_SIZE * 8, SQUARE_SIZE * 8)
 	size = custom_minimum_size
+	pivot_offset = custom_minimum_size / 2.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	piece_layer = Control.new()
 	piece_layer.size = custom_minimum_size
@@ -33,7 +35,30 @@ func _init(square_size: int = 80) -> void:
 	add_child(piece_layer)
 
 func _display(pos: Vector2i) -> Vector2i:
-	return Vector2i(7 - pos.x, 7 - pos.y) if flipped else pos
+	# Orientation is now a visual Control.rotation tween (see set_flipped),
+	# not a coordinate-space flip, so content is always laid out the same way.
+	return pos
+
+# Smoothly spins the whole board 180° instead of snapping pieces/squares to
+# their mirrored positions instantly. Rotating the Control (around its own
+# center, via pivot_offset) is visually identical to the old (7-x, 7-y)
+# coordinate flip — Godot delivers _gui_input positions already adjusted for
+# the node's rotation, so click-to-square mapping keeps working unchanged.
+func set_flipped(new_flipped: bool, animate: bool = true) -> void:
+	if new_flipped == flipped:
+		return
+	flipped = new_flipped
+	var target_rotation := PI if flipped else 0.0
+	if _flip_tween != null and _flip_tween.is_valid():
+		_flip_tween.kill()
+	if not animate:
+		rotation = target_rotation
+		return
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flip_tween = create_tween()
+	_flip_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_flip_tween.tween_property(self, "rotation", target_rotation, 0.5)
+	_flip_tween.finished.connect(func(): mouse_filter = Control.MOUSE_FILTER_STOP)
 
 func _to_screen(pos: Vector2i) -> Vector2:
 	var d := _display(pos)
