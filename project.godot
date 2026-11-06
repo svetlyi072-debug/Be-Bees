@@ -31,7 +31,7 @@ window/size/viewport_height=820
 window/size/mode=2
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
-window/handheld/orientation="portrait"
+window/handheld/orientation=1
 
 [rendering]
 
