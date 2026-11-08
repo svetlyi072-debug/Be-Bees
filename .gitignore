@@ -7,3 +7,11 @@
 
 # Local build output, not project content
 /exports/
+/installers/*.zip
+/installers/*.tar.gz
+/installers/*.apk
+/installers/release_notes.md
+/installers/windows/Be_Bees.exe
+/installers/windows/icon.ico
+/installers/linux/Be_Bees.x86_64
+/installers/linux/icon.png
