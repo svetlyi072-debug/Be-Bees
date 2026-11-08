@@ -1,2 +1,7 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# Windows batch files misbehave (silently eat the first character or two of
+# each line) when checked out with LF-only endings - cmd.exe genuinely
+# expects CRLF, unlike every other text format here.
+*.bat text eol=crlf
